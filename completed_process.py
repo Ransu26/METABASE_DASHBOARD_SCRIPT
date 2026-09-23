@@ -93,7 +93,7 @@ date_received_field_id = feedback_fields["DATE_RECEIVED"]
 cards = ["Total Revenue", "Orders By Category", "Orders Over Time", "Account and Feedback"]
 cards_id = []
 mappings = {}
-
+    
 
 # CREATE CARDS
 # CARD 1: TOTAL REVENUE

@@ -4,6 +4,10 @@ get_card_id.py
 poc_dashboard.py
 trend_over_time.py
 update_dashboard.py
+model_to_card.py
+completed_process.py
+create_model.py
 .env
 get_card_id.py
 get_card_id.py
+__pycache__/
