@@ -26,3 +26,19 @@ def make_dimension_tag(tag_name: str, display_name: str, field_id: int, widget_t
         "dimension":["field", field_id, None],
         "widget-type": widget_type
     }
+
+def make_card_reference_tag(model_id: int) -> tuple[str, dict]:
+    """
+    Builds the special template tag Metabase requires whenever a native
+    query references another card/model via {{#123-...}}. The tag's key
+    must be exactly "#<id>" - the optional slug after the id in the SQL
+    text is cosmetic and does not appear in the tag key itself.
+    """
+    tag_name = f"#{model_id}"
+    return tag_name, {
+        "id": str(uuid.uuid4()),
+        "name": tag_name,
+        "display-name": tag_name,
+        "type": "card",
+        "card-id": model_id,
+    }
