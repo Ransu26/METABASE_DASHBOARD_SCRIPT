@@ -1,17 +1,21 @@
 import get_create_helpers as gch
 import api_helpers as req
 from env_variables import getEnvVar
-from parameter_registry import ParameterRegistry, make_dimension_tag
+from parameter_registry import ParameterRegistry
+from card_definitions import build_card_defs
+from model_definitions import build_model_defs
 
 DASHBOARD_NAME = "PROTOLARPER"
 CARD_COLLECTION_NAME = "PROTOLARPER COLLECTIONS"
 DASHBOARD_COLLECTION_NAME = "DASHBOARD COLLECTIONS"
+MODEL_COLLECTION_NAME = "MODEL COLLECTIONS"
 
 db_id = int(getEnvVar("METABASE_DATABASE_ID"))
 
 def main():
     card_collection_id = gch.get_create_collection(CARD_COLLECTION_NAME)
     dashboard_collection_id = gch.get_create_collection(DASHBOARD_COLLECTION_NAME)
+    model_collection_id = gch.get_create_collection(MODEL_COLLECTION_NAME)
 
     db_metadata = req.api_get(f"/api/database/{db_id}/metadata")
 
@@ -23,172 +27,66 @@ def main():
     product_fields = gch.get_fields_ids(product_table_id)
     feedback_fields = gch.get_fields_ids(feedback_table_id)
 
-    created_at_field_id = order_fields["CREATED_AT"]
-    category_field_id = product_fields["CATEGORY"]
-    date_received_field_id = feedback_fields["DATE_RECEIVED"]
+    field_ids = {
+    "created_at": order_fields["CREATED_AT"],
+    "category": product_fields["CATEGORY"],
+    "date_received": feedback_fields["DATE_RECEIVED"]
+    }
 
     registry = ParameterRegistry()
 
-    created_at_param_id = registry.get_or_create("Created At", "created_at", "date/all-options", "date")
-    category_param_id = registry.get_or_create("Category", "category", "string/=", "string")
-    date_received_param_id = registry.get_or_create("Date Received", "date_received", "date/all-options", "date")
+    param_ids = {
+    "created_at": registry.get_or_create("Created At", "created_at", "date/all-options", "date"),
+    "category": registry.get_or_create("Category", "category", "string/=", "string"),
+    "date_received": registry.get_or_create("Date Received", "date_received", "date/all-options", "date")
+    }
 
-    card_defs = [
-        {
-            "name": "Total Revenue",
-            "query": ("""
-                SELECT
-                    SUM(Total * (1 - (Orders.Discount/100))) 
-                FROM Orders 
-                JOIN Products ON Orders.PRODUCT_ID = Products.ID 
-                WHERE Orders.Discount IS NOT NULL [[AND {{created_at}}]][[ AND {{category}}]]
-            """),
-            "display": "scalar",
-            "visualization_settings": {},
-            "template_tags": {
-                "created_at": make_dimension_tag(
-                    "created_at", 
-                    "Created At", 
-                    created_at_field_id, 
-                    "date/all-options"),
-                "category":  make_dimension_tag(
-                    "category",
-                    "Category",
-                    category_field_id,
-                    "string/=",
-                )
+    model_defs = build_model_defs()
+    models_ids = {}
+
+    for model_def in model_defs:
+        model_def["card_id"] = gch.create_card(
+            name=model_def["name"],
+            dataset_query = {
+                "database": db_id,
+                "type": "native",
+                "native": {"query": model_def["query"]}
             },
-            "mappings": [
-                {"parameter_id": created_at_param_id, "target": ["dimension", ["template-tag", "created_at"]]},
-                {"parameter_id": category_param_id, "target": ["dimension", ["template-tag", "category"]]}
-            ],
-            "layout": {"row": 0, "col": 0, "size_x": 24, "size_y": 6}
-        },
-        {
-            "name": "Orders By Category",
-            "query": ("""
-                SELECT 
-                    Products.Category, 
-                    COUNT(DISTINCT Orders.ID) AS `Number of Orders` 
-                FROM Products 
-                JOIN Orders ON Products.ID = Orders.PRODUCT_ID 
-                WHERE 1 = 1 [[AND {{created_at}}]] [[AND {{category}}]] 
-                GROUP BY Products.Category 
-                ORDER BY Products.Category ASC;
-            """),
-            "display": "bar",
-            "visualization_settings": {
-                "graph.x_axis.scale": "ordinal",
-                "graph.dimensions": ["Category"],
-                "graph.metrics": ["COUNT"]
-            },
-            "template_tags": {
-                "created_at": make_dimension_tag(
-                    "created_at",
-                    "Created At",
-                    created_at_field_id,
-                    "date/all-options"
-                ),
-                "category": make_dimension_tag(
-                    "category",
-                    "Category",
-                    category_field_id,
-                    "string/="
-                )
-            },
-            "mappings": [
-                {"parameter_id": created_at_param_id, "target": ["dimension", ["template-tag", "created_at"]]},
-                {"parameter_id": category_param_id, "target": ["dimension", ["template-tag", "category"]]}
-            ],
-            "layout": {"row": 6, "col": 0, "size_x": 12, "size_y": 6}
-        },
-        {
-            "name": "Orders Over Time",
-            "query": ("""
-                SELECT 
-                    date(Orders.CREATED_AT, 'weekday 0', '-6 days') AS week, 
-                    COUNT(*) AS `Number of Orders` 
-                FROM Orders 
-                JOIN Products ON Products.ID = Orders.PRODUCT_ID 
-                WHERE 1 = 1 [[AND {{created_at}}]] [[AND {{category}}]] 
-                GROUP BY date(Orders.CREATED_AT, 'weekday 0', '-6 days') 
-                ORDER BY week;
-            """),
-            "display": "line",
-            "visualization_settings": {
-                "graph.x_axis.scale": "timeseries",
-                "graph.metrics": ["COUNT"],
-                "graph.dimensions": ["week"]
-            },
-            "template_tags": {
-                "created_at": make_dimension_tag(
-                    "created_at",
-                    "Created At",
-                    created_at_field_id,
-                    "date/all-options"
-                ),
-                "category": make_dimension_tag(
-                    "category",
-                    "Category",
-                    category_field_id,
-                    "string/="
-                )
-            },
-            "mappings": [
-                {"parameter_id": created_at_param_id, "target": ["dimension", ["template-tag", "created_at"]]},
-                {"parameter_id": category_param_id, "target": ["dimension", ["template-tag", "category"]]}
-            ],
-            "layout": {"row": 6, "col": 13, "size_x": 12, "size_y": 6}
-        },
-        {
-            "name": "Account and Feedback",
-            "query": ("""
-                SELECT 
-                    Accounts.EMAIL AS `Email Address`, 
-                    Accounts.FIRST_NAME AS `First Name`, 
-                    Accounts.LAST_NAME AS `Last Name`, 
-                    Accounts.PLAN AS `Subscribed Plan`, 
-                    COALESCE(Accounts.SOURCE, 'N/A') AS Source, 
-                    Feedback.RATING AS Rating, 
-                    Feedback.DATE_RECEIVED AS `Date Received` 
-                FROM Accounts 
-                JOIN Feedback ON Accounts.EMAIL = Feedback.EMAIL 
-                WHERE 1 = 1 [[AND {{date_received}}]] 
-                LIMIT 20;
-            """),
-            "display": "table",
-            "visualization_settings": {},
-            "template_tags": {
-                "date_received": make_dimension_tag(
-                    "date_received",
-                    "Date Received",
-                    date_received_field_id,
-                    "date/all-options"
-                )
-            },
-            "mappings": [
-                {"parameter_id": date_received_param_id, "target": ["dimension", ["template-tag", "date_received"]]}
-            ],
-            "layout": {"row": 12, "col": 0, "size_x": 24, "size_y": 6}
-        }
-    ]
+            display=model_def["display"],
+            card_type=model_def["type"],
+            search_type=model_def["search_key"],
+            visual_settings=model_def["visualization_settings"],
+            collection_id=model_collection_id,
+            result_metadata=None,
+        )
+
+        models_ids[model_def["key"]] = model_def["card_id"]
+        print(f"Model '{model_def['name']}' -> id {model_def['card_id']}")
+
+
+    card_defs = build_card_defs(field_ids=field_ids, param_ids=param_ids, model_id=models_ids)
 
     for card_def in card_defs:
-        dateset_query = {
-            "database": db_id,
-            "type": "native",
-            "native": {
-                "query": card_def["query"],
-                "template-tags": card_def["template_tags"],
-            },
+        native = {
+            "query": card_def["query"],
+            "template-tags": card_def["template_tags"],
         }
+
+        result_metadata = gch.run_native_query_for_metadata(native, db_id)
 
         card_def["card_id"] = gch.create_card(
             name=card_def["name"],
-            dataset_query=dateset_query,
+            dataset_query={
+                "database": db_id,
+                "type": "native",
+                "native": native
+            },
+            card_type=card_def["type"],
+            search_type=card_def["search_key"],
             display=card_def["display"],
             visual_settings=card_def["visualization_settings"],
-            collection_id=card_collection_id
+            collection_id=card_collection_id,
+            result_metadata=result_metadata
         )
         print(f"Card '{card_def['name']}' ->  id {card_def['card_id']}")
 

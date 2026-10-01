@@ -26,17 +26,22 @@ def create_card(
         name: str, 
         dataset_query: dict, 
         display: str, 
+        card_type: str,
+        search_type: str,
         visual_settings: dict, 
-        collection_id: int) -> int:
-    match_result = has_exact_match(name, "card")
+        collection_id: int,
+        result_metadata: dict = None) -> int:
+    match_result = has_exact_match(name, search_type)
     if match_result:
         return match_result["id"]
     payload = {
         "name": name,
         "collection_id": collection_id,
+        "type": card_type,
         "dataset_query": dataset_query,
         "display": display,
-        "visualization_settings": visual_settings
+        "visualization_settings": visual_settings,
+        "result_metadata": result_metadata
     }
     created = req.api_post("/api/card", payload)
     return created["id"]
@@ -49,3 +54,19 @@ def find_table_id(db_metadata: dict, table_name: str) -> int:
 def get_fields_ids(table_id: int) -> int:
     fields = req.api_get(f"/api/table/{table_id}/query_metadata")["fields"]
     return {f["name"]: f["id"] for f in fields}
+
+def run_native_query_for_metadata(native: dict, database_id: int) -> list[dict]:
+    """
+    native: {"query": "...", "template-tags": {...}}  (template-tags optional)
+    Runs the query ad-hoc so Metabase computes column metadata, to attach
+    at card-creation time. Required for both models AND any question built
+    on top of a model/native question - without it, Metabase can't resolve
+    columns or connect dashboard parameters correctly.
+    """
+    payload = {
+        "type": "native",
+        "native": native,
+        "database": database_id,
+    }
+    result = req.api_post("/api/dataset", payload)
+    return result["data"]["results_metadata"]["columns"]
